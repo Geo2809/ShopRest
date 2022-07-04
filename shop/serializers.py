@@ -1,7 +1,10 @@
 from decimal import Decimal
+from django.db import transaction
 from django.forms import ValidationError
 from rest_framework import serializers
-from .models import Cart, CartItem, Collection, Customer, Product, Review
+from .models import Cart, CartItem, Collection, Customer, Order, OrderItem, Product, Review
+
+
 class CollectionSerializer(serializers.ModelSerializer):
     products_count = serializers.IntegerField(read_only=True)
     class Meta:
@@ -99,3 +102,47 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = ['phone', 'birth_date', 'membership', 'user_id']
 
 
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    product = BasicProductSerializer()
+    class Meta:
+        model = OrderItem
+        fields = ['id', 'product', 'unit_price', 'quantity']
+
+class OrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+    class Meta:
+        model = Order
+        fields = ['id', 'placed_at', 'payment_status', 'customer', 'items']
+
+
+class CreateOrderSerializer(serializers.Serializer):
+    cart_id = serializers.UUIDField()
+
+    def save(self, **kwargs):
+        with transaction.atomic():
+            cart_id = self.validated_data['cart_id']
+            user_id = self.context['user_id']
+            customer = Customer.objects.get(user_id=user_id)
+            order = Order.objects.create(customer=customer)
+
+            cart_items = CartItem.objects \
+                                .select_related('product') \
+                                .filter(cart_id=cart_id)
+            order_items = [
+                OrderItem(
+                    order = order,
+                    product = item.product,
+                    quantity = item.quantity,
+                    unit_price = item.product.unit_price
+                ) for item in cart_items
+            ]
+            OrderItem.objects.bulk_create(order_items)
+            Cart.objects.filter(pk=cart_id).delete()
+            return order
+
+
+class UpdateOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['payment_status']
