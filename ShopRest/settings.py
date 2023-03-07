@@ -47,7 +47,10 @@ INSTALLED_APPS = [
     'rest_framework',
 
     'shop',
+    'core'
 ]
+
+AUTH_USER_MODEL = 'core.User'
 
 MIDDLEWARE = [
     "debug_toolbar.middleware.DebugToolbarMiddleware",
